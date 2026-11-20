@@ -1,0 +1,31 @@
+# Copy to TeToS.toml (next to the binary) to customize.
+# Every value here is also settable via CLI flags or TETOS_* env vars.
+
+[server]
+host = "127.0.0.1"
+port = 8000
+
+[utautts]
+# Auto-detected on PATH and in ../UtauTTS if omitted.
+# executable = "/path/to/utautts-server"
+# cli_executable = "/path/to/utautts-cli"
+# voice_dir = "/path/to/voicebanks"
+# model_dir = ["/path/to/prosody/models"]
+port = 0                  # 0 = free loopback port for the child server
+extra_args = []           # pass-through for new upstream flags
+startup_timeout_secs = 90
+
+[defaults]
+voice = "teto"
+language = "ja"
+method = "waveform-synthesis"
+# model_id = "frame-intonation-tcn-v12"
+response_format = "mp3"
+intonation_strength = 4.0
+
+[voices]
+diva = "teto"
+queen = "teto"
+alloy = "teto"
+nova = "teto"
+senpai = "Adachi Rei"

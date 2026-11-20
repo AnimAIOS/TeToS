@@ -1,0 +1,9 @@
+/target/
+/TeToS.toml
+*.wav
+*.mp3
+*.pcm
+*.flac
+*.ogg
+*.log
+.DS_Store
