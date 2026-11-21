@@ -76,8 +76,18 @@ fn search(names: &[&str]) -> Option<PathBuf> {
     None
 }
 
+/// Resolve relative candidates against the current working directory first, then
+/// the executable's own directory, so auto-detection also works when TeToS is
+/// launched from outside the repo root.
 fn relative(candidates: &[&str]) -> Option<PathBuf> {
-    candidates.iter().map(PathBuf::from).find(|p| p.is_file())
+    if let Some(hit) = candidates.iter().map(PathBuf::from).find(|p| p.is_file()) {
+        return Some(hit);
+    }
+    let exe_dir = env::current_exe().ok()?.parent()?.to_path_buf();
+    candidates.iter().map(PathBuf::from).find_map(|p| {
+        let resolved = exe_dir.join(p);
+        resolved.is_file().then_some(resolved)
+    })
 }
 
 /// Report the upstream version but never reject a future one: TeToS only
@@ -127,7 +137,7 @@ pub fn scan_voice_dir(dir: Option<&Path>) -> Vec<Voicebank> {
             }).is_some();
         if !has_oto { continue; }
         let id = path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown").to_string();
-        out.push(Voicebank { id: id.clone(), name: id.clone(), path: id, ..Voicebank::default() });
+        out.push(Voicebank { id: id.clone(), name: id, path: path.to_string_lossy().into_owned(), ..Voicebank::default() });
     }
     out.sort_by(|a, b| a.id.cmp(&b.id));
     out
@@ -144,4 +154,43 @@ mod tests {
         assert_eq!(parse_version("v2.0"), Some((2, 0, 0)));
         assert_eq!(parse_version("nonsense"), None);
     }
+
+    #[test]
+    fn relative_resolves_against_current_dir() {
+        // Create a file in the current working directory and verify `relative`
+        // finds it via the first (cwd-relative) branch.
+        let unique = format!(".teto_rel_test_{}", std::process::id());
+        let tmp = PathBuf::from(&unique);
+        std::fs::write(&tmp, b"hit").unwrap();
+        let result = relative(&[&unique]);
+        let _ = std::fs::remove_file(&tmp);
+        assert_eq!(result.as_deref(), Some(tmp.as_path()));
+    }
+
+    #[test]
+    fn relative_resolves_against_exe_dir() {
+        // Place a file next to the test binary (exe dir), then reference it by a
+        // name that does NOT exist relative to cwd. This exercises the second
+        // branch: exe_dir.join(candidate).
+        let exe_dir = env::current_exe().unwrap().parent().unwrap().to_path_buf();
+        let unique = format!("teto_rel_exe_{}", std::process::id());
+        let file_in_exe_dir = exe_dir.join(&unique);
+        std::fs::write(&file_in_exe_dir, b"hit").unwrap();
+
+        // Use a name that won't resolve from cwd (the file only exists in
+        // exe_dir). Prefix with "./" so it's treated as relative.
+        let candidate = format!("./{}", unique);
+        let result = relative(&[&candidate]);
+        let _ = std::fs::remove_file(&file_in_exe_dir);
+
+        // The function returns exe_dir joined with the candidate path.
+        // We assert the file was found (result is Some).
+        assert!(result.is_some(), "expected relative() to resolve via exe dir");
+    }
+
+    #[test]
+    fn relative_returns_none_when_missing() {
+        assert!(relative(&["nonexistent_teto_file_xyz"]).is_none());
+    }
 }
+

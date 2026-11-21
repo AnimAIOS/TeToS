@@ -117,14 +117,17 @@ pub fn chunk_text(text: &str, max_chars: usize) -> Vec<String> {
     let max = max_chars.max(1);
     let mut out = Vec::new();
     let mut current = String::new();
+    let mut current_len: usize = 0;
     for ch in text.chars() {
         current.push(ch);
+        current_len += 1;
         let boundary = matches!(ch, '。' | '！' | '？' | '!' | '?' | '；' | ';' | '\n');
-        if boundary || current.chars().count() >= max {
+        if boundary || current_len >= max {
             if !current.trim().is_empty() {
                 out.push(current.trim().to_string());
             }
             current.clear();
+            current_len = 0;
         }
     }
     if !current.trim().is_empty() {

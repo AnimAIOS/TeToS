@@ -36,11 +36,11 @@ pub struct Cli {
     #[arg(long, env = "TETOS_PORT")]
     pub port: Option<u16>,
 
-    /// Path to `utautts-server` (auto-detected on PATH and in ../UtauTTS by default)
+    /// Path to `utautts-server`; implies `--backend server` unless another backend is chosen explicitly
     #[arg(long, value_name = "PATH", env = "TETOS_SERVER")]
     pub utautts_server: Option<PathBuf>,
 
-    /// Path to `utautts-cli` (only used for the CLI backend)
+    /// Path to `utautts-cli`; implies `--backend cli` unless another backend is chosen explicitly
     #[arg(long, value_name = "PATH", env = "TETOS_CLI")]
     pub utautts_cli: Option<PathBuf>,
 
@@ -56,7 +56,7 @@ pub struct Cli {
     #[arg(long, env = "TETOS_VOICE")]
     pub voice: Option<String>,
 
-    /// Backend implementation
+    /// Backend implementation (wins over the path flags; default: server when a server path is known, else cli)
     #[arg(long, value_enum, env = "TETOS_BACKEND")]
     pub backend: Option<BackendKind>,
 
@@ -219,15 +219,20 @@ impl Config {
         model_dir.extend(cli.model_dir.iter().cloned());
         if model_dir.is_empty() { model_dir.extend(inferred_model_dir); }
 
-        let backend_kind = cli.backend
-            .or_else(|| cli.utautts_cli.as_ref().map(|_| BackendKind::Cli))
-            .unwrap_or_else(|| {
-                if cli.utautts_server.is_some() || file.utautts.executable.is_some() {
-                    BackendKind::Server
-                } else {
-                    BackendKind::default()
-                }
-            });
+        // An explicit --backend wins. Otherwise both paths given means guessing,
+        // so prefer the server and say so — silently ignoring one flag is worse.
+        let backend_kind = match cli.backend {
+            Some(kind) => kind,
+            None if cli.utautts_cli.is_some() && cli.utautts_server.is_some() => {
+                tracing::warn!(
+                    "both --utautts-server and --utautts-cli were given without --backend; using the server backend (pass --backend cli to change this)"
+                );
+                BackendKind::Server
+            }
+            None if cli.utautts_cli.is_some() => BackendKind::Cli,
+            None if cli.utautts_server.is_some() || file.utautts.executable.is_some() => BackendKind::Server,
+            None => BackendKind::default(),
+        };
 
         let default_voice = cli.voice.clone().unwrap_or(file.defaults.voice);
         if default_voice.trim().is_empty() {
@@ -266,7 +271,62 @@ fn infer_sibling(exe: Option<&std::path::Path>, child: &str) -> Option<PathBuf> 
 }
 
 pub fn env_path_exists(name: &str) -> bool {
+    // Windows binaries are `name.exe`; PATH lookup here must match.
+    let name = if cfg!(windows) {
+        std::borrow::Cow::Owned(format!("{name}.exe"))
+    } else {
+        std::borrow::Cow::Borrowed(name)
+    };
     env::var_os("PATH")
-        .map(|paths| env::split_paths(&paths).any(|p| p.join(name).is_file()))
+        .map(|paths| env::split_paths(&paths).any(|p| p.join(name.as_ref()).is_file()))
         .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod config_tests {
+    use super::*;
+    use clap::Parser;
+
+    fn load_from(args: &[&str]) -> Config {
+        // Point at a nonexistent config file so FileConfig::default() is used.
+        let cli = Cli::parse_from(
+            std::iter::once("teto-tss").chain(args.iter().copied())
+        );
+        Config::load(&cli).expect("config load should succeed")
+    }
+
+    #[test]
+    fn explicit_backend_wins() {
+        // Explicit --backend cli wins even when --utautts-server is also given.
+        let cfg = load_from(&["--backend", "cli", "--utautts-server", "/bin/true"]);
+        assert_eq!(cfg.backend_kind, BackendKind::Cli);
+
+        // Explicit --backend server wins even when --utautts-cli is also given.
+        let cfg = load_from(&["--backend", "server", "--utautts-cli", "/bin/true"]);
+        assert_eq!(cfg.backend_kind, BackendKind::Server);
+    }
+
+    #[test]
+    fn both_paths_warn_prefers_server() {
+        // No explicit --backend; both --utautts-server and --utautts-cli given.
+        // Must pick Server (and emit a warning, which we don't assert on but
+        // the code path must not panic).
+        let cfg = load_from(&[
+            "--utautts-server", "/bin/true",
+            "--utautts-cli", "/bin/true",
+        ]);
+        assert_eq!(cfg.backend_kind, BackendKind::Server);
+    }
+
+    #[test]
+    fn server_only_picks_server() {
+        let cfg = load_from(&["--utautts-server", "/bin/true"]);
+        assert_eq!(cfg.backend_kind, BackendKind::Server);
+    }
+
+    #[test]
+    fn cli_only_picks_cli() {
+        let cfg = load_from(&["--utautts-cli", "/bin/true"]);
+        assert_eq!(cfg.backend_kind, BackendKind::Cli);
+    }
 }

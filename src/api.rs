@@ -109,6 +109,19 @@ async fn speech(
     if req.input.trim().is_empty() {
         return Err(ApiError::bad_request("input must not be empty (even the diva needs something to sing)"));
     }
+    const MAX_INPUT_CHARS: usize = 10_000;
+    if req.input.chars().count() > MAX_INPUT_CHARS {
+        return Err(ApiError::bad_request(format!(
+            "input must be at most {MAX_INPUT_CHARS} characters"
+        )));
+    }
+    if let Some(reading) = &req.reading {
+        if reading.chars().count() > MAX_INPUT_CHARS {
+            return Err(ApiError::bad_request(format!(
+                "reading must be at most {MAX_INPUT_CHARS} characters"
+            )));
+        }
+    }
     if let Some(notes) = &req.instructions {
         if !notes.trim().is_empty() {
             info!("ignoring instructions (the diva does not take acting notes): {notes}");
@@ -182,11 +195,8 @@ async fn speech(
 
     // UtauTTS caps text at 500 chars. Agent output does not care. We chunk:
     // the diva breathes at sentence boundaries even when the LLM does not.
-    let chunks = if base.reading.is_some() {
-        vec![req.input.clone()]
-    } else {
-        chunk_text(&req.input, 450)
-    };
+    let chunks = chunk_text(&req.input, 450);
+    let chunks = if chunks.is_empty() { vec![req.input.clone()] } else { chunks };
 
     let mut wavs = Vec::with_capacity(chunks.len());
     let mut meta: Option<SynthOutput> = None;
@@ -270,6 +280,14 @@ fn resolve_voicebank(
                 if !matches.iter().any(|m| m.id == bank.id) {
                     matches.push(bank);
                 }
+            }
+        }
+    }
+    // Exact id matches win before substring sorting.
+    for bank in &matches {
+        for candidate in &candidates {
+            if &bank.id == candidate {
+                return Ok(bank.id.clone());
             }
         }
     }

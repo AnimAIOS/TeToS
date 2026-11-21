@@ -231,6 +231,8 @@ CLI flags and `TETOS_*` environment variables override the file. See `teto-tss -
 - `--backend cli`: one `utautts-cli` invocation per request. Slower, but depends on almost nothing upstream — useful when UtauTTS is in active development and its HTTP API shifts.
 - `--backend auto`: prefer server, fall back to CLI.
 
+An explicit `--backend` always wins. Otherwise `--utautts-cli` selects the CLI backend, `--utautts-server` (or `[utautts].executable`) selects the server backend, and giving both path flags without `--backend` logs a warning and picks the server.
+
 ## Staying update-proof with active upstream development
 
 UtauTTS is under active development — the diva changes her haircut constantly — so TeToS deliberately:

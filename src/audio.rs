@@ -50,11 +50,26 @@ impl OutputFormat {
 
 pub async fn concat_wav(chunks: Vec<Vec<u8>>) -> ApiResult<Vec<u8>> {
     if chunks.len() == 1 {
-        return Ok(chunks.into_iter().next().unwrap());
+        // A lone chunk still has to be valid WAV; otherwise callers hand garbage
+        // to the encoders and get a confusing failure far from the cause.
+        let chunk = chunks.into_iter().next().unwrap();
+        if !is_wav(&chunk) {
+            return Err(ApiError::new(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "synthesis_error",
+                "invalid WAV from UtauTTS (the diva produced noise, not audio)",
+            ));
+        }
+        return Ok(chunk);
     }
     spawn_blocking(move || concat_wav_blocking(&chunks))
         .await
         .map_err(|_| ApiError::internal("audio worker panicked"))?
+}
+
+/// `RIFF....WAVE` — the cheapest sanity check that bytes are a WAV container.
+fn is_wav(bytes: &[u8]) -> bool {
+    bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WAVE"
 }
 
 fn concat_wav_blocking(chunks: &[Vec<u8>]) -> ApiResult<Vec<u8>> {
@@ -221,5 +236,55 @@ mod tests {
         let Ok(wav) = std::fs::read("/tmp/f.wav") else { return };
         let out = encode_mp3(&wav).expect("mp3 encoding");
         assert!(!out.is_empty());
+    }
+
+    /// A minimal valid 16-bit mono WAV with one silent sample.
+    fn valid_wav() -> Vec<u8> {
+        let mut cursor = Cursor::new(Vec::new());
+        {
+            let spec = WavSpec {
+                channels: 1,
+                sample_rate: 44100,
+                bits_per_sample: 16,
+                sample_format: SampleFormat::Int,
+            };
+            let mut w = WavWriter::new(&mut cursor, spec).unwrap();
+            w.write_sample::<i16>(0).unwrap();
+            w.finalize().unwrap();
+        }
+        cursor.into_inner()
+    }
+
+    #[tokio::test]
+    async fn concat_single_chunk_rejects_corrupt_wav() {
+        // Garbage bytes that are not a RIFF/WAVE container must be rejected.
+        let garbage = vec![0xFFu8, 0xD8, 0xFF, 0xE0, 0x00, 0x10];
+        let result = concat_wav(vec![garbage]).await;
+        let err = result.expect_err("corrupt WAV must fail");
+        assert_eq!(err.status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(err.code, "synthesis_error");
+    }
+
+    #[tokio::test]
+    async fn concat_single_chunk_accepts_valid_wav() {
+        let wav = valid_wav();
+        let out = concat_wav(vec![wav.clone()]).await.expect("valid WAV should pass");
+        // Single-chunk path returns the input unchanged.
+        assert_eq!(out, wav);
+    }
+
+    #[tokio::test]
+    async fn concat_single_chunk_rejects_truncated_wav() {
+        // Only 4 bytes "RIFF" — too short to be a valid WAV header.
+        let truncated = b"RIFF".to_vec();
+        let result = concat_wav(vec![truncated]).await;
+        assert!(result.is_err(), "truncated WAV must be rejected");
+    }
+
+    #[tokio::test]
+    async fn concat_empty_chunks_fails() {
+        let result = concat_wav(vec![]).await;
+        let err = result.expect_err("empty input must fail");
+        assert_eq!(err.status, StatusCode::UNPROCESSABLE_ENTITY);
     }
 }

@@ -85,10 +85,27 @@ impl Backend {
                 let Some(exe) = server else {
                     bail!("utautts-server not found. Put it on PATH, pass --utautts-server, or use --backend cli (the diva cannot sing without her engine)");
                 };
-                let backend = ServerBackend::start(cfg, exe).await?;
-                let catalog = backend.catalog().await;
-                info!("backend: long-lived utautts-server at {} (the diva has entered the building)", backend.base);
-                Ok((Self::Server(backend), catalog))
+                match ServerBackend::start(cfg, exe).await {
+                    Ok(backend) => {
+                        let catalog = backend.catalog().await;
+                        info!("backend: long-lived utautts-server at {} (the diva has entered the building)", backend.base);
+                        Ok((Self::Server(backend), catalog))
+                    }
+                    Err(err) => {
+                        // Auto: if server start fails and CLI is available, fall back.
+                        let auto = cfg.backend_kind == BackendKind::Auto;
+                        if auto && cli.is_some() {
+                            warn!("utautts-server failed to start ({err:#}); falling back to CLI backend");
+                            let exe = cli.unwrap();
+                            let backend = CliBackend::new(cfg, exe);
+                            let catalog = backend.catalog();
+                            info!("backend: utautts-cli (one process per synthesis — the CLI diva is a method actor)");
+                            Ok((Self::Cli(backend), catalog))
+                        } else {
+                            Err(err)
+                        }
+                    }
+                }
             }
             BackendKind::Cli => {
                 let Some(exe) = cli else {
@@ -124,7 +141,6 @@ pub struct ServerBackend {
     client: Client,
     base: String,
     voice_dir: Option<PathBuf>,
-    version: String,
 }
 
 impl ServerBackend {
@@ -191,7 +207,6 @@ impl ServerBackend {
                 .context("building HTTP client")?,
             base: url.trim_end_matches('/').to_string(),
             voice_dir: cfg.voice_dir.clone(),
-            version: String::new(),
         })
     }
 
@@ -211,9 +226,6 @@ impl ServerBackend {
         match self.get_json::<Health>("/api/health").await {
             Ok(health) => {
                 compat::report_version(&health);
-                // Stored for diagnostics; the struct is not Sync-mutable, so we
-                // simply log here and keep the field for future use.
-                let _ = &self.version;
                 info!("upstream health: {:?}", health.status);
             }
             Err(err) => warn!("health probe failed: {err:#}"),
@@ -308,6 +320,16 @@ pub struct CliBackend {
     seq: AtomicU64,
 }
 
+
+struct RequestFileGuard {
+    path: PathBuf,
+}
+impl Drop for RequestFileGuard {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.path);
+    }
+}
+
 impl CliBackend {
     fn new(cfg: &Config, exe: &Path) -> Self {
         Self { exe: exe.to_path_buf(), voice_dir: cfg.voice_dir.clone(), seq: AtomicU64::new(0) }
@@ -339,9 +361,24 @@ impl CliBackend {
             "teto-tss-{}-{}-{}.json", std::process::id(), n,
             std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()
         ));
-        let written = fs::write(&request_file, serde_json::to_vec(&req.for_cli()).unwrap())
-            .map_err(|e| BackendError::new(StatusCode::INTERNAL_SERVER_ERROR, "internal_error", e.to_string()));
-        if let Err(e) = written { return Err(e); }
+        // Write with restrictive permissions; guard ensures cleanup on all paths.
+        let guard = RequestFileGuard { path: request_file.clone() };
+        let bytes = serde_json::to_vec(&req.for_cli()).unwrap();
+        let write_res = (|| -> std::io::Result<()> {
+            use std::io::Write;
+            let mut f = fs::File::create(&request_file)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                f.set_permissions(fs::Permissions::from_mode(0o600))?;
+            }
+            f.write_all(&bytes)?;
+            f.sync_all()?;
+            Ok(())
+        })();
+        if let Err(e) = write_res {
+            return Err(BackendError::new(StatusCode::INTERNAL_SERVER_ERROR, "internal_error", e.to_string()));
+        }
 
         let output = Command::new(&self.exe)
             .arg("--voicebank").arg(&voicebank)
@@ -350,9 +387,9 @@ impl CliBackend {
             .output()
             .await
             .map_err(|e| BackendError::new(StatusCode::BAD_GATEWAY, "backend_unreachable", e.to_string()));
-        let _ = fs::remove_file(&request_file);
+        // guard dropped below after use; keep file until process done
         let output = output?;
-
+        drop(guard);
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
             return Err(BackendError::new(StatusCode::UNPROCESSABLE_ENTITY, "synthesis_error",
@@ -385,5 +422,90 @@ fn map_status(status: StatusCode) -> StatusCode {
         400 | 404 | 413 | 422 | 429 => status,
         503 => StatusCode::SERVICE_UNAVAILABLE,
         _ => StatusCode::BAD_GATEWAY,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::protocol::UtauRequest;
+    use clap::Parser;
+
+    fn make_request(voicebank_id: &str) -> UtauRequest {
+        UtauRequest {
+            text: "テスト".to_string(),
+            reading: None,
+            language: "ja".to_string(),
+            method: "waveform-synthesis".to_string(),
+            voicebank_id: voicebank_id.to_string(),
+            model_id: None,
+            phonemizer: None,
+            tone: None,
+            color: None,
+            dictionary: None,
+            mora_duration_ms: None,
+            pause_duration_ms: None,
+            intonation_strength: None,
+            apply_pitch: None,
+            settings: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn cli_synthesize_empty_voicebank_returns_bad_request() {
+        let cli = crate::config::Cli::parse_from(["teto-tss"]);
+        let cfg = crate::config::Config::load(&cli).expect("config");
+        let backend = CliBackend::new(&cfg, Path::new("/bin/true"));
+        let req = make_request("");
+        let err = backend.synthesize(&req).await.expect_err("empty voicebank_id must fail");
+        assert_eq!(err.status, StatusCode::BAD_REQUEST);
+        assert_eq!(err.code, "invalid_request");
+    }
+
+    /// Create a temp file with empty TOML content so Config::load uses
+    /// FileConfig::default() without triggering a file-not-found error.
+    fn temp_empty_config() -> tempfile::NamedTempFile {
+        tempfile::NamedTempFile::new().unwrap()
+    }
+
+    #[tokio::test]
+    async fn cli_synthesize_missing_voicebank_dir_returns_bad_request() {
+        // voice_dir points at a path that does not exist, so the requested
+        // voicebank subdirectory will not be found.
+        let cfg_file = temp_empty_config();
+        let cli = crate::config::Cli::parse_from([
+            "teto-tss",
+            "--config", cfg_file.path().to_str().unwrap(),
+            "--voice-dir", "/tmp/teto_nonexistent_voice_dir_zzz",
+        ]);
+        let cfg = crate::config::Config::load(&cli).expect("config");
+        let backend = CliBackend::new(&cfg, Path::new("/bin/true"));
+        let req = make_request("nonexistent_voicebank");
+        let err = backend.synthesize(&req).await.expect_err("missing voicebank dir must fail");
+        assert_eq!(err.status, StatusCode::BAD_REQUEST);
+        assert_eq!(err.code, "invalid_request");
+        assert!(
+            err.message.contains("not found"),
+            "expected 'not found' in message, got: {}",
+            err.message
+        );
+    }
+
+    #[tokio::test]
+    async fn cli_synthesize_empty_voice_dir_returns_bad_request() {
+        // Point voice_dir at an empty temp dir. The voicebank subdir won't exist.
+        let empty_dir = tempfile::tempdir().unwrap();
+        let cfg_file = temp_empty_config();
+        let cli = crate::config::Cli::parse_from([
+            "teto-tss",
+            "--config", cfg_file.path().to_str().unwrap(),
+            "--voice-dir", empty_dir.path().to_str().unwrap(),
+        ]);
+        let cfg = crate::config::Config::load(&cli).expect("config");
+        let backend = CliBackend::new(&cfg, Path::new("/bin/true"));
+        let req = make_request("teto");
+        let err = backend.synthesize(&req).await.expect_err("missing voicebank in empty dir must fail");
+        assert_eq!(err.status, StatusCode::BAD_REQUEST);
+        assert_eq!(err.code, "invalid_request");
     }
 }
