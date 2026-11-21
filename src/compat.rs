@@ -3,7 +3,8 @@
 //! Nothing in here patches or imports UtauTTS source. We only talk to its
 //! published binary/HTTP surface and parse responses *leniently*: unknown
 //! fields are ignored, missing fields get defaults. When upstream adds fields
-//! or bumps its version, TeToS keeps working.
+//! or bumps its version, TeToS keeps working. We never patch upstream — the
+//! diva's haircut is upstream's business.
 
 use std::{env, fs, path::{Path, PathBuf}};
 
@@ -47,6 +48,7 @@ pub struct FindResult {
 }
 
 /// Look for the UtauTTS executables without assuming an install layout.
+/// The diva hides well; check PATH, the usual checkout, and then give up gracefully.
 pub fn find_executables(explicit_server: Option<&Path>, explicit_cli: Option<&Path>) -> FindResult {
     let server = explicit_server.and_then(executable_or_none)
         .or_else(|| search(&["utautts-server", "utautts-server.exe"]))
@@ -89,7 +91,7 @@ pub fn report_version(health: &Health) {
         Some((major, minor, patch)) => {
             info!("UtauTTS version {major}.{minor}.{patch} (status: {})", health.status);
             if major == 0 {
-                warn!("UtauTTS is pre-1.0 and may change its API; TeToS isolates this in src/compat.rs");
+                warn!("UtauTTS is pre-1.0 and may change its API; TeToS isolates this in src/compat.rs (haircut subject to change without notice)");
             }
         }
         None => warn!("unrecognised UtauTTS version string: {}", health.version),

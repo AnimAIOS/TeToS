@@ -35,6 +35,7 @@ impl IntoResponse for ApiError {
                 "message": self.message,
                 "type": "teto_error",
                 "code": self.code,
+                "note": "the diva is fine, your request is not",
             }
         });
         (self.status, Json(body)).into_response()

@@ -19,9 +19,9 @@ pub enum BackendKind {
 #[command(
     name = "teto-tss",
     version,
-    about = "Teto as a Service: an OpenAI-compatible /v1/audio/speech endpoint backed by UTAU voicebanks.",
+    about = "Teto as a Service: an OpenAI-compatible /v1/audio/speech endpoint backed by UTAU voicebanks. Runs on any poTETO PC.",
     long_about = None,
-    after_help = "The LLM does the thinking. Teto does the talking. Both are your problem now."
+    after_help = "The LLM does the thinking. Teto does the talking. Both are your problem now.\nRuns on any poTETO PC. Haircut memory card sold separately."
 )]
 pub struct Cli {
     /// Config file path (default: ./TeToS.toml if it exists)
@@ -52,7 +52,7 @@ pub struct Cli {
     #[arg(long, value_name = "PATH", env = "TETOS_MODEL_DIR")]
     pub model_dir: Vec<PathBuf>,
 
-    /// Default voice alias
+    /// Default voice alias (diva, queen, and friends all lead to Teto)
     #[arg(long, env = "TETOS_VOICE")]
     pub voice: Option<String>,
 
@@ -189,6 +189,10 @@ impl Config {
             ("kasane teto", "teto"),
             ("diva", "teto"),
             ("queen", "teto"),
+            ("poteto", "teto"),
+            ("potato", "teto"),
+            ("haircut", "teto"),
+            ("memorycard", "teto"),
             ("alloy", "teto"),
             ("nova", "teto"),
             ("shimmer", "teto"),
@@ -227,7 +231,7 @@ impl Config {
 
         let default_voice = cli.voice.clone().unwrap_or(file.defaults.voice);
         if default_voice.trim().is_empty() {
-            bail!("default voice must not be empty");
+            bail!("default voice must not be empty (the diva refuses to be nameless)");
         }
 
         Ok(Self {

@@ -1,4 +1,5 @@
 //! Minimal, dependency-light WAV handling and OpenAI-compatible output formats.
+//! The diva's voice is stitched together one sample at a time — that is a feature.
 
 use std::io::Cursor;
 
@@ -58,7 +59,7 @@ pub async fn concat_wav(chunks: Vec<Vec<u8>>) -> ApiResult<Vec<u8>> {
 
 fn concat_wav_blocking(chunks: &[Vec<u8>]) -> ApiResult<Vec<u8>> {
     if chunks.is_empty() {
-        return Err(ApiError::new(StatusCode::UNPROCESSABLE_ENTITY, "synthesis_error", "no audio produced"));
+        return Err(ApiError::new(StatusCode::UNPROCESSABLE_ENTITY, "synthesis_error", "no audio produced (the diva is mysteriously silent)"));
     }
     let first = WavReader::new(Cursor::new(&chunks[0]))
         .map_err(|e| ApiError::internal(format!("invalid WAV from UtauTTS: {e}")))?;

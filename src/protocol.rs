@@ -1,4 +1,5 @@
 //! OpenAI speech request -> UTAU synthesis request translation.
+//! The diva does the talking; this module does the paperwork.
 
 use serde::{Deserialize, Serialize};
 
@@ -20,7 +21,7 @@ pub struct DictionaryEntry {
     pub reading: String,
 }
 
-/// Deep tuning, namespaced so upstream OpenAI-compatible clients can ignore it.
+/// Deep tuning, namespaced so strict OpenAI clients never learn the diva is an UTAU.
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(default)]
 pub struct TetoExtras {
@@ -104,12 +105,14 @@ impl UtauRequest {
 }
 
 /// OpenAI speeds are 0.25..=4.0. UTAU wants milliseconds per mora.
+/// Fast diva, small numbers.
 pub fn speed_to_timing(speed: f32) -> (f32, f32) {
     let speed = speed.clamp(0.25, 4.0);
     ((120.0 / speed).clamp(20.0, 1000.0), (180.0 / speed).clamp(0.0, 3000.0))
 }
 
 /// Split long agent output into UTAUTTS's 500-character chunks at sentence boundaries.
+/// The LLM never stops for breath; the diva does.
 pub fn chunk_text(text: &str, max_chars: usize) -> Vec<String> {
     let max = max_chars.max(1);
     let mut out = Vec::new();

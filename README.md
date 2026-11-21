@@ -9,9 +9,11 @@
   ╚═════╝ ╚═════╝ ╚══════╝   ╚═╝    ╚═════╝ ╚══════╝
 ```
 
-**An OpenAI-compatible `/v1/audio/speech` endpoint that talks with UTAU voicebanks instead of a metered API.**
+**An OpenAI-compatible `/v1/audio/speech` endpoint that talks with UTAU voicebanks instead of a metered API — Teto-nomically free, and running on any poTETO PC you can find.**
 
 > The LLM does the thinking. Teto does the talking. Both are your problem now.
+>
+> **Minimum system requirements:** one (1) poTETO PC, one (1) haircut memory card, zero (0) GPUs, and an unreasonable amount of faith in a fictional android diva.
 
 TeToS is a small Rust binary that:
 
@@ -22,17 +24,29 @@ TeToS is a small Rust binary that:
 
 Point any OpenAI client at it and your AI agent suddenly sounds like a concatenatively-synthesized diva. For **$0.00 per character**.
 
+<details>
+<summary><strong>📼 Diva lore (certified by the haircut memory card)</strong></summary>
+
+- Teto is an android. Her hair is a memory card. Please insert it gently.
+- She was never actually a VOCALOID — she applied on April Fools 2011 and the internet just said "sure, diva."
+- Her voice is concatenative synthesis: thousands of tiny UTAU samples glued together with `oto.ini` and sheer confidence.
+- She has no GPU. She has never had a GPU. She does not need a GPU. She has *you*.
+- "poTETO PC" is not an insult here. It is the target hardware.
+
+</details>
+
 ## Why
 
 | | Hosted TTS | TeToS |
 |---|---|---|
-| Cost | pay per character | free |
-| Hardware | somebody else's GPU | any CPU |
+| Cost | pay per character | free (Teto-nomically impossible to bill) |
+| Hardware | somebody else's GPU | **any poTETO PC** — yes, yours counts |
 | Voice | "helpful assistant #4" | an anime icon with a haircut memory card |
 | Licensing burden | vendor ToS | your voicebank's ToS |
+| Diva salary | buried in your subscription | exposure, ramen, and a fresh haircut memory card |
 | Meme potential | limited | **unbounded** |
 
-We are not replacing your LLM. We are replacing the *bill* for its mouth.
+We are not replacing your LLM. We are replacing the *bill* for its mouth. The diva does not do math, she does *vocals* — and she does them on a poTETO.
 
 ## Architecture
 
@@ -50,7 +64,7 @@ flowchart LR
 
 There is **no fork of UtauTTS**. It is an external binary dependency, auto-detected on `PATH` or in `../UtauTTS`. Upstream stays free to change as fast as it likes.
 
-## Quickstart
+## Quickstart — summon the diva
 
 ### 1. Get UtauTTS and a voicebank
 
@@ -78,7 +92,7 @@ Point TeToS at the extracted folder (each subdirectory containing `oto.ini` is d
 ./target/release/teto-tss --voice-dir '../UtauTTS/voice/重音テト音声ライブラリー'
 ```
 
-The `voice="teto"` alias resolves to Japanese-named banks automatically; root banks are preferred over subbanks.
+The `voice="teto"` alias resolves to Japanese-named banks automatically; root banks are preferred over subbanks — the diva prefers being the main character, obviously.
 
 > TeToS does **not** ship a voicebank. Check your voicebank's license before using it, especially commercially.
 
@@ -90,7 +104,7 @@ cargo build --release
 ./target/release/teto-tss
 ```
 
-If `utautts-server` is not on `PATH`, point to it explicitly:
+If `utautts-server` is not on `PATH`, point the diva to it explicitly (she will not wander):
 
 ```bash
 ./target/release/teto-tss \
@@ -98,13 +112,13 @@ If `utautts-server` is not on `PATH`, point to it explicitly:
   --voice-dir ../UtauTTS/voice
 ```
 
-You should see the banner, `UTAUTTS_READY=...`, and:
+You should see the banner, `UTAUTTS_READY=...` (the diva clearing her throat), and:
 
 ```
 OpenAI-compatible endpoint ready at http://127.0.0.1:8000/v1/audio/speech
 ```
 
-### 3. One-line migration
+### 3. One-line migration (one `base_url` edit, zero diva complaints)
 
 ```python
 from openai import OpenAI
@@ -132,7 +146,7 @@ curl -sS http://127.0.0.1:8000/v1/audio/speech \
   -o hello.wav
 ```
 
-## API
+## API — speaking to the diva
 
 ### `POST /v1/audio/speech`
 
@@ -142,10 +156,10 @@ Standard OpenAI fields:
 |---|---|
 | `model` | accepted for compatibility; if it matches a UTAU prosody model id, that model is used |
 | `input` | text to speak. Long text is auto-chunked at sentence boundaries (UTAU caps at 500 chars) |
-| `voice` | voicebank id or alias (`teto`, `diva`, `queen`, …). String or `{"id":"..."}` |
+| `voice` | voicebank id or alias (`teto`, `diva`, `queen`, and yes, `potato`). String or `{"id":"..."}` |
 | `response_format` | `mp3` (default), `wav`, `pcm`, `flac`, `opus`, `aac` |
 | `speed` | `0.25`–`4.0`, mapped to UTAU mora/pause durations |
-| `instructions` | accepted and politely ignored |
+| `instructions` | accepted and politely ignored (the diva takes no notes) |
 | `stream_format` | accepted; plain audio is returned |
 
 Deep tuning via a namespaced `teto` object:
@@ -209,9 +223,9 @@ queen = "Kasane Teto"
 senpai = "Adachi Rei"
 ```
 
-CLI flags and `TETOS_*` environment variables override the file. See `teto-tss --help`.
+CLI flags and `TETOS_*` environment variables override the file. See `teto-tss --help` — the diva's help text is the only documentation she reads.
 
-### Backends
+### Backends — how the diva reaches the mic
 
 - `--backend server` (default when a server binary is found): one child process, fast, HTTP API.
 - `--backend cli`: one `utautts-cli` invocation per request. Slower, but depends on almost nothing upstream — useful when UtauTTS is in active development and its HTTP API shifts.
@@ -219,7 +233,7 @@ CLI flags and `TETOS_*` environment variables override the file. See `teto-tss -
 
 ## Staying update-proof with active upstream development
 
-UtauTTS is under active development, so TeToS deliberately:
+UtauTTS is under active development — the diva changes her haircut constantly — so TeToS deliberately:
 
 - never patches or vendors its source — only launches the published binary;
 - auto-detects the executable in `PATH`, `../UtauTTS`, or via config;
@@ -231,7 +245,7 @@ UtauTTS is under active development, so TeToS deliberately:
 
 If an upstream release breaks something, the blast radius is `src/compat.rs` and `src/backend.rs`.
 
-## Formats
+## Formats — what shape the diva takes
 
 | format | implementation | needs ffmpeg |
 |---|---|---|
@@ -249,7 +263,7 @@ Long inputs are synthesized chunk-by-chunk and re-joined into a single WAV befor
 - **Voicebanks have their own terms.** You supply the voicebank; you are responsible for following its license. This is especially important for commercial use. TeToS bundles none.
 - There is no RVC, no voice conversion, no zero-shot cloning, and no training on voicebank samples. Just sample concatenation and frame selection, as UTAU intended.
 
-## Troubleshooting
+## Troubleshooting — when the diva is being difficult
 
 | symptom | fix |
 |---|---|
@@ -260,6 +274,7 @@ Long inputs are synthesized chunk-by-chunk and re-joined into a single WAV befor
 | `WORLD engine was not found in runtime` | your UtauTTS source build lacks the compiled engine; use a release ZIP or build `native/world-engine` into `runtime/` |
 | garbled Japanese audio | the voicebank may not support the requested phonemes; check its `oto.ini` and try another bank |
 | upstream API changed | try `--backend cli`, then file an issue |
+| diva sounds like a potato | congratulations — that's authentic concatenative synthesis on a poTETO PC |
 
 ## Roadmap (aspirational, extremelyonsen)
 
@@ -269,5 +284,7 @@ Long inputs are synthesized chunk-by-chunk and re-joined into a single WAV befor
 - [ ] optional `RUST_LOG=tetos=debug` tracing of upstream diagnostics
 - [ ] a small TUI so you can pet the voicebank
 - [ ] absolutely none of the above involving an LLM for synthesis
+- [ ] prove the haircut memory card can double as a LAN cable under load
+- [ ] a "diva is tired" mode that returns 418 with an MP3 of her sighing
 
-Made with questionable judgement and an unreasonable amount of respect for a fictional android singer.
+Made with questionable judgement, an unreasonable amount of respect for a fictional android singer, and the unshakeable belief that every poTETO PC deserves a diva.

@@ -46,6 +46,8 @@ async fn root() -> Json<Value> {
         "service": "TeToS",
         "tagline": "Teto as a Service — the diva is the API",
         "endpoints": ["/health", "/v1/models", "/v1/voicebanks", "/v1/audio/speech"],
+        "hardware": "any poTETO PC will do",
+        "powered_by": "one (1) haircut memory card",
         "disclaimer": "No neural voice cloning. UTAU samples only. The LLM does the thinking; Teto does the talking."
     }))
 }
@@ -58,6 +60,8 @@ async fn health(State(state): State<AppState>) -> Json<Value> {
         "voicebanks": catalog.voicebanks.len(),
         "models": catalog.models.len(),
         "uptime_secs": state.started.elapsed().as_secs(),
+        "poTETO_compatible": true,
+        "haircut_memory_card": "mounted",
         "message": "Teto is fine. You are the one who needs rest."
     }))
 }
@@ -67,10 +71,10 @@ async fn models(State(state): State<AppState>) -> Json<Value> {
     let mut seen = HashSet::new();
     let mut data = Vec::new();
     for (id, note) in [
-        ("tts-1", "TeToS alias of the default voice"),
+        ("tts-1", "TeToS alias of the default voice (free tier is the only tier)"),
         ("tts-1-hd", "TeToS alias of the default voice (no HD, only diva)"),
-        ("gpt-4o-mini-tts", "TeToS alias; not actually GPT-4o"),
-        ("teto", "Kasane Teto via UTAU"),
+        ("gpt-4o-mini-tts", "TeToS alias; not actually GPT-4o, just the diva in a trench coat"),
+        ("teto", "Kasane Teto via UTAU — never a VOCALOID, always a diva"),
     ] {
         seen.insert(id.to_string());
         data.push(model_json(id, note));
@@ -103,7 +107,7 @@ async fn speech(
     Json(req): Json<SpeechRequest>,
 ) -> ApiResult<Response> {
     if req.input.trim().is_empty() {
-        return Err(ApiError::bad_request("input must not be empty"));
+        return Err(ApiError::bad_request("input must not be empty (even the diva needs something to sing)"));
     }
     if let Some(notes) = &req.instructions {
         if !notes.trim().is_empty() {
@@ -114,7 +118,7 @@ async fn speech(
         warn!("stream_format=sse requested; returning plain audio instead");
     }
     if request_headers.contains_key(header::AUTHORIZATION) {
-        info!("ignored an Authorization header: everything here is free tier");
+        info!("ignored an Authorization header: everything here is free tier, the diva does not check IDs");
     }
 
     let format = OutputFormat::parse(
@@ -176,7 +180,8 @@ async fn speech(
         settings: extras.settings.clone(),
     };
 
-    // UtauTTS caps text at 500 chars. Agent output does not care. We chunk.
+    // UtauTTS caps text at 500 chars. Agent output does not care. We chunk:
+    // the diva breathes at sentence boundaries even when the LLM does not.
     let chunks = if base.reading.is_some() {
         vec![req.input.clone()]
     } else {
@@ -193,7 +198,7 @@ async fn speech(
             return Err(ApiError::new(
                 StatusCode::UNPROCESSABLE_ENTITY,
                 "synthesis_error",
-                "UtauTTS returned empty audio",
+                "UtauTTS returned empty audio (the diva is mysteriously silent)",
             ));
         }
         if meta.is_none() { meta = Some(output.clone()); }
@@ -287,7 +292,7 @@ fn resolve_voicebank(
         }
     }
     if catalog.voicebanks.len() == 1 {
-        warn!("no voicebank matched '{requested}', using the only one available");
+        warn!("no voicebank matched '{requested}', using the only one available (the diva has no casting director)");
         return Ok(catalog.voicebanks[0].id.clone());
     }
 

@@ -69,7 +69,7 @@ async fn main() -> ExitCode {
         catalog.models.len()
     );
     if catalog.voicebanks.is_empty() {
-        warn!("no voicebanks found — put a UTAU voicebank directory under the configured voice dir");
+        warn!("no voicebanks found — put a UTAU voicebank directory under the configured voice dir (the diva needs her samples)");
     }
 
     let backend = Arc::new(backend);
@@ -146,13 +146,14 @@ async fn doctor(config: &Config) -> ExitCode {
         "  ffmpeg         : {}",
         if config::env_path_exists("ffmpeg") { "present (flac/opus/aac available)" } else { "missing (mp3/wav/pcm still work)" }
     );
+    println!("  poTETO PC      : detected (this is a compliment)");
     println!("  configured voice: {}", config.default_voice);
 
     if found.server.is_none() && found.cli.is_none() {
-        println!("\nRESULT: no UtauTTS binary. TeToS cannot synthesize without one.");
+        println!("\nRESULT: no UtauTTS binary. TeToS cannot synthesize without one — even a poTETO needs an engine.");
         ExitCode::FAILURE
     } else {
-        println!("\nRESULT: looks good. Run `teto-tss` and point your OpenAI client at /v1.");
+        println!("\nRESULT: looks good. Run `teto-tss` and point your OpenAI client at /v1. The diva is waiting.");
         ExitCode::SUCCESS
     }
 }

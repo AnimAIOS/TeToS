@@ -1,4 +1,5 @@
 //! External process management and synthesis. All UtauTTS specifics live here.
+//! The diva runs as a child process; please do not poke her with a stick.
 
 use std::{fs, path::{Path, PathBuf}, process::Stdio, sync::atomic::{AtomicU64, Ordering}, time::Duration};
 
@@ -82,11 +83,11 @@ impl Backend {
         match kind {
             BackendKind::Server => {
                 let Some(exe) = server else {
-                    bail!("utautts-server not found. Put it on PATH, pass --utautts-server, or use --backend cli");
+                    bail!("utautts-server not found. Put it on PATH, pass --utautts-server, or use --backend cli (the diva cannot sing without her engine)");
                 };
                 let backend = ServerBackend::start(cfg, exe).await?;
                 let catalog = backend.catalog().await;
-                info!("backend: long-lived utautts-server at {}", backend.base);
+                info!("backend: long-lived utautts-server at {} (the diva has entered the building)", backend.base);
                 Ok((Self::Server(backend), catalog))
             }
             BackendKind::Cli => {
@@ -95,7 +96,7 @@ impl Backend {
                 };
                 let backend = CliBackend::new(cfg, exe);
                 let catalog = backend.catalog();
-                info!("backend: utautts-cli (one process per synthesis)");
+                info!("backend: utautts-cli (one process per synthesis — the CLI diva is a method actor)");
                 Ok((Self::Cli(backend), catalog))
             }
             BackendKind::Auto => bail!("no UtauTTS executable found"),
@@ -175,7 +176,7 @@ impl ServerBackend {
 
         let url = tokio::time::timeout(cfg.startup_timeout, ready_rx)
             .await
-            .context("timed out waiting for UTAUTTS_READY")?
+            .context("timed out waiting for UTAUTTS_READY (the diva was warming up her haircut memory card)")?
             .context("utautts-server exited before becoming ready")?;
 
         if let Some(status) = child.try_wait().context("checking utautts-server")? {
@@ -285,9 +286,9 @@ impl ServerBackend {
         let _ = child.start_kill();
 
         match tokio::time::timeout(Duration::from_secs(5), child.wait()).await {
-            Ok(Ok(_)) => info!("utautts-server shut down cleanly"),
+            Ok(Ok(_)) => info!("utautts-server shut down cleanly (the diva has left the stage)"),
             _ => {
-                warn!("utautts-server did not exit in time; forcing shutdown");
+                warn!("utautts-server did not exit in time; forcing shutdown (the diva refused to leave)");
                 let _ = child.start_kill();
             }
         }
