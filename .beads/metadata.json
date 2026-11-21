@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "TeToS",
+  "project_id": "86623e52-cd1c-4178-aa13-4604bd84b2bf"
+}
